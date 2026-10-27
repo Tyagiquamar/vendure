@@ -706,6 +706,15 @@ export class CustomerService {
         if (!customer) {
             return false;
         }
+        // A guest checkout Customer has no User, so it is not covered by the `getUserByEmailAddress`
+        // check above. Without this, the update would leave two live Customers on one email address.
+        const customerWithSameEmailAddress = await this.connection.getRepository(ctx, Customer).findOne({
+            select: { id: true },
+            where: { emailAddress: normalizedEmailAddress, deletedAt: IsNull() },
+        });
+        if (customerWithSameEmailAddress && customerWithSameEmailAddress.id !== customer.id) {
+            return new EmailAddressConflictError();
+        }
         const oldEmailAddress = customer.emailAddress;
         await this.historyService.createHistoryEntryForCustomer({
             customerId: customer.id,

@@ -26,6 +26,7 @@ import { PasswordValidationError } from '../src/common/error/generated-graphql-s
 import { FragmentOf, ResultOf } from './graphql/graphql-admin';
 import {
     MeDocument,
+    createCustomerDocument,
     getCustomerDocument,
     getCustomerHistoryDocument,
     getCustomerListDocument,
@@ -658,6 +659,33 @@ describe('Shop auth & accounts', () => {
 
             expect(requestUpdateCustomerEmailAddress.message).toBe('The email address is not available.');
             expect(requestUpdateCustomerEmailAddress.errorCode).toBe(ErrorCode.EMAIL_ADDRESS_CONFLICT_ERROR);
+        });
+
+        it('return error result if the email address belongs to a guest Customer', async () => {
+            const GUEST_EMAIL_ADDRESS = 'guest-checkout@address.com';
+            // A Customer created without a password has no User, so `getUserByEmailAddress` does not see it.
+            await adminClient.query(createCustomerDocument, {
+                input: { emailAddress: GUEST_EMAIL_ADDRESS },
+            });
+
+            await shopClient.asUserWithCredentials(customer!.emailAddress, PASSWORD);
+            const { requestUpdateCustomerEmailAddress } = await shopClient.query(
+                requestUpdateEmailAddressDocument,
+                {
+                    password: PASSWORD,
+                    newEmailAddress: GUEST_EMAIL_ADDRESS,
+                },
+            );
+            successErrorGuard.assertErrorResult(requestUpdateCustomerEmailAddress);
+
+            expect(requestUpdateCustomerEmailAddress.message).toBe('The email address is not available.');
+            expect(requestUpdateCustomerEmailAddress.errorCode).toBe(ErrorCode.EMAIL_ADDRESS_CONFLICT_ERROR);
+
+            const { customers } = await adminClient.query(getCustomerListDocument, {
+                options: { filter: { emailAddress: { eq: GUEST_EMAIL_ADDRESS } } },
+            });
+            expect(customers.items.map(c => c.emailAddress)).toEqual([GUEST_EMAIL_ADDRESS]);
+            expect(customers.items[0]?.user).toBeNull();
         });
 
         it('triggers event with token', async () => {
