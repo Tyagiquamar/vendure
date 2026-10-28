@@ -1086,6 +1086,43 @@ describe('Updating email address without email verification', () => {
         const { activeCustomer } = await shopClient.query(getActiveCustomerDocument);
         expect(activeCustomer!.emailAddress).toBe('not.normal@test.com');
     });
+
+    // #5640 — a guest checkout Customer has no User, so its email address must still count as taken
+    it('return error result when the email address belongs to a guest Customer', async () => {
+        const GUEST_EMAIL_ADDRESS = 'guest-checkout@test.com';
+        await shopClient.asAnonymousUser();
+        await shopClient.query(addItemToOrderDocument, {
+            productVariantId: 'T_1',
+            quantity: 1,
+        });
+        await shopClient.query(setCustomerDocument, {
+            input: {
+                emailAddress: GUEST_EMAIL_ADDRESS,
+                firstName: 'Guest',
+                lastName: 'Checkout',
+            },
+        });
+
+        await shopClient.asUserWithCredentials('not.normal@test.com', 'test');
+        const { requestUpdateCustomerEmailAddress } = await shopClient.query(
+            requestUpdateEmailAddressDocument,
+            {
+                password: 'test',
+                newEmailAddress: GUEST_EMAIL_ADDRESS,
+            },
+        );
+        successErrorGuard.assertErrorResult(requestUpdateCustomerEmailAddress);
+        expect(requestUpdateCustomerEmailAddress.errorCode).toBe(ErrorCode.EMAIL_ADDRESS_CONFLICT_ERROR);
+
+        const { activeCustomer } = await shopClient.query(getActiveCustomerDocument);
+        expect(activeCustomer!.emailAddress).toBe('not.normal@test.com');
+
+        const { customers } = await adminClient.query(getCustomerListDocument, {
+            options: { filter: { emailAddress: { eq: GUEST_EMAIL_ADDRESS } } },
+        });
+        expect(customers.totalItems).toBe(1);
+        expect(customers.items[0].user).toBeNull();
+    });
 });
 
 function getVerificationTokenPromise(): Promise<string> {
