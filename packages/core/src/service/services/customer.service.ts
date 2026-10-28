@@ -23,7 +23,7 @@ import {
     VerifyCustomerAccountResult as VerifyCustomerAccountAdminResult,
 } from '@vendure/common/lib/generated-types';
 import { ID, PaginatedList } from '@vendure/common/lib/shared-types';
-import { IsNull } from 'typeorm';
+import { IsNull, Not } from 'typeorm';
 
 import { RequestContext } from '../../api/common/request-context';
 import { RelationPaths } from '../../api/decorators/relations.decorator';
@@ -708,11 +708,11 @@ export class CustomerService {
         }
         // A guest checkout Customer has no User, so it is not covered by the `getUserByEmailAddress`
         // check above. Without this, the update would leave two live Customers on one email address.
-        const customerWithSameEmailAddress = await this.connection.getRepository(ctx, Customer).findOne({
+        const otherCustomerWithEmailAddress = await this.connection.getRepository(ctx, Customer).findOne({
             select: { id: true },
-            where: { emailAddress: normalizedEmailAddress, deletedAt: IsNull() },
+            where: { emailAddress: normalizedEmailAddress, id: Not(customer.id), deletedAt: IsNull() },
         });
-        if (customerWithSameEmailAddress && customerWithSameEmailAddress.id !== customer.id) {
+        if (otherCustomerWithEmailAddress) {
             return new EmailAddressConflictError();
         }
         const oldEmailAddress = customer.emailAddress;
