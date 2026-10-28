@@ -26,12 +26,12 @@ import { PasswordValidationError } from '../src/common/error/generated-graphql-s
 import { FragmentOf, ResultOf } from './graphql/graphql-admin';
 import {
     MeDocument,
-    createCustomerDocument,
     getCustomerDocument,
     getCustomerHistoryDocument,
     getCustomerListDocument,
 } from './graphql/shared-definitions';
 import {
+    addItemToOrderDocument,
     currentUserFragment,
     getActiveCustomerDocument,
     refreshTokenDocument,
@@ -39,6 +39,7 @@ import {
     requestPasswordResetDocument,
     requestUpdateEmailAddressDocument,
     resetPasswordDocument,
+    setCustomerDocument,
     updateEmailAddressDocument,
     verifyEmailDocument,
 } from './graphql/shop-definitions';
@@ -663,9 +664,18 @@ describe('Shop auth & accounts', () => {
 
         it('return error result if the email address belongs to a guest Customer', async () => {
             const GUEST_EMAIL_ADDRESS = 'guest-checkout@address.com';
-            // A Customer created without a password has no User, so `getUserByEmailAddress` does not see it.
-            await adminClient.query(createCustomerDocument, {
-                input: { emailAddress: GUEST_EMAIL_ADDRESS },
+            // A guest checkout Customer has no User, so `getUserByEmailAddress` does not see it.
+            await shopClient.asAnonymousUser();
+            await shopClient.query(addItemToOrderDocument, {
+                productVariantId: 'T_1',
+                quantity: 1,
+            });
+            await shopClient.query(setCustomerDocument, {
+                input: {
+                    emailAddress: GUEST_EMAIL_ADDRESS,
+                    firstName: 'Guest',
+                    lastName: 'Checkout',
+                },
             });
 
             await shopClient.asUserWithCredentials(customer!.emailAddress, PASSWORD);
